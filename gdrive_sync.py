@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("goangel.gdrive_sync")
 
-RCLONE_REMOTE = os.environ.get("RCLONE_REMOTE", "gdrive")
+RCLONE_REMOTE = os.environ.get("RCLONE_REMOTE", "GOANGEL")
 RCLONE_FOLDER = os.environ.get("RCLONE_FOLDER", "GOANGEL")
 RCLONE_CONF_PATH = Path("/tmp/rclone.conf")
 RCLONE_BIN = "rclone"
@@ -333,6 +333,8 @@ def status() -> Dict[str, Any]:
         "rclone_available": bool(shutil.which(RCLONE_BIN)),
         "config_path": str(RCLONE_CONF_PATH),
         "config_exists": RCLONE_CONF_PATH.exists(),
+        "remote": RCLONE_REMOTE,
+        "folder": RCLONE_FOLDER,
         "remote_path": remote_path(),
         "connected": False,
         "size_bytes": 0,
