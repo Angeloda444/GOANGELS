@@ -237,8 +237,8 @@ def sync_up(local_dir: str, remote_sub: str = "cache", delete: bool = False) -> 
         "--exclude", "training.log",
         "--exclude", "checkpoints/**",
     ]
-    if not delete:
-        args.append("--ignore-existing")
+    if delete:
+        args.append("--delete-excluded")
     try:
         _run(args, timeout=SYNC_TIMEOUT)
         logger.info("sync_up OK : %s -> %s", local_dir, dest)

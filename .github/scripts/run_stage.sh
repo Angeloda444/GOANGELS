@@ -191,6 +191,9 @@ mkdir -p cache/stages/done cache/stages/attempts cache/stages/models
 
 if [ -f /tmp/rclone.conf ]; then
   mkdir -p cache/stages/done cache/stages/attempts cache/stages/models cache/stages/finalize
+  echo "  📋 Contenu Drive (diagnostic) :"
+  rclone --config /tmp/rclone.conf lsf GOANGEL:GOANGEL/cache/ --recursive 2>/dev/null | grep -E "historical|features|models|finalize" | head -10 || true
+
   echo "  📥 Drive : cache/..."
   rclone --config /tmp/rclone.conf copy GOANGEL:GOANGEL/cache/ cache/ \
     --transfers 8 --checkers 16 \
@@ -298,9 +301,15 @@ if [ -f /tmp/rclone.conf ]; then
   CACHE_MB=$(du -sm cache 2>/dev/null | awk '{print $1}' || echo 0)
   echo "  📊 Cache local : ${CACHE_MB} MB"
 
-  if [ "$CACHE_MB" -lt 10 ]; then
-    echo "  ⚠️  Cache trop petit (${CACHE_MB} MB < 10 MB) — skip Drive push (évite écrasement)"
-  else
+  HIST_OK=0
+  FEAT_OK=0
+  if [ -f "cache/historical.pkl" ] && [ "$(stat -c%s cache/historical.pkl 2>/dev/null || echo 0)" -gt 100000 ]; then
+    HIST_OK=1
+  fi
+  if [ -f "cache/stages/features.pkl" ] && [ "$(stat -c%s cache/stages/features.pkl 2>/dev/null || echo 0)" -gt 100000 ]; then
+    FEAT_OK=1
+  fi
+  if [ "$HIST_OK" = "1" ] && [ "$FEAT_OK" = "1" ]; then
     echo "  📤 Drive : copy cache/ (non destructif)..."
     rclone --config /tmp/rclone.conf copy cache/ GOANGEL:GOANGEL/cache/ \
       --transfers 8 --checkers 16 \

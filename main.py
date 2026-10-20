@@ -2215,11 +2215,23 @@ def _stage_prepare() -> None:
                     features_ok = True
                     n_feat = feat["X"].shape[1] if hasattr(feat["X"], "shape") else "?"
                     stage_print(f"📦 features.pkl chargé ({n} samples × {n_feat} features) — pas de régénération")
+                else:
+                    stage_print("⚠️  features.pkl présent mais vide → régénération")
+            else:
+                stage_print("⚠️  features.pkl structure invalide → régénération")
         except Exception as exc:
             logger.warning("features.pkl illisible : %s", exc)
+            stage_print(f"⚠️  features.pkl illisible ({exc}) → régénération")
+    else:
+        stage_print("⚠️  features.pkl ABSENT du Drive → régénération")
 
     if not features_ok:
         _stage_save_features(df_past)
+        try:
+            sz = feat_path.stat().st_size / (1024 * 1024)
+            stage_print(f"💾 features.pkl régénéré : {sz:.1f} MB")
+        except OSError:
+            pass
 
     if ckpt_mgr is not None:
         try:
