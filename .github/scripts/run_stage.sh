@@ -9,16 +9,6 @@ fi
 export GH_TOKEN="${GITHUB_TOKEN}"
 export MAX_ATTEMPTS="${MAX_ATTEMPTS:-15}"
 
-echo "🔍 Diagnostic TABPFN_TOKEN :"
-if [ -n "${TABPFN_TOKEN}" ]; then
-  echo "  Longueur : ${#TABPFN_TOKEN}"
-  echo "  Préfixe  : ${TABPFN_TOKEN:0:4}..."
-else
-  echo "  ❌ TABPFN_TOKEN vide ou absent"
-fi
-
-export TABPFN_TOKEN="${TABPFN_TOKEN}"
-export HF_TOKEN="${HF_TOKEN}"
 
 echo "═══════════════════════════════════════════════════════════"
 echo "  GOANGEL STAGE : ${STAGE}"
@@ -89,6 +79,8 @@ fi
 echo "🔍 Diagnostic rclone :"
 echo "  rclone binary : $(command -v rclone || echo 'ABSENT')"
 echo "  RCLONE_CONFIG : ${#RCLONE_CONFIG} caractères"
+echo "  RCLONE_REMOTE : GOANGEL"
+echo "  RCLONE_FOLDER : GOANGEL"
 
 if [ -z "${RCLONE_CONFIG}" ]; then
   echo "  ❌ RCLONE_CONFIG NON DÉFINI"
@@ -121,31 +113,58 @@ if [[ "$STAGE" == *"fttransformer"* ]]; then
   pip install -q rtdl_revisiting_models rtdl_num_embeddings
 fi
 
-cat > .env <<ENVEOF
-BZZOIRO_TOKENS="${TOKENS}"
-BZZOIRO_WORKERS_PER_KEY=${WORKERS_PER_KEY}
-BZZOIRO_MAX_WORKERS=${MAX_WORKERS}
-BZZOIRO_RATE_LIMIT_PER_MINUTE=${RATE_LIMIT}
-BZZOIRO_RATE_LIMIT_SAFETY_MARGIN=1
-BZZOIRO_HISTORICAL_SEASONS_LOOKBACK=${SEASONS}
-BZZOIRO_ENRICH_XG=${ENRICH}
-API_MAX_RETRIES=6
-API_RETRY_BACKOFF_SECONDS=0.4
-API_TIMEOUT_SECONDS=25
-GOANGEL_CACHE_DIR=./cache
-GOANGEL_LOG_LEVEL=INFO
-GOANGEL_GITHUB_PUSH=true
-GOANGEL_GITHUB_REPO=${GITHUB_REPOSITORY}
-GOANGEL_GITHUB_USER=${GITHUB_REPOSITORY_OWNER}
-GOANGEL_GITHUB_BRANCH=cache-auto
-GH_PAT=${GITHUB_TOKEN}
-GOANGEL_MAX_ATTEMPTS_PER_MODEL=${MAX_ATTEMPTS}
-GOANGEL_PB_BAYESIAN_N_SAMPLES=1200
-GOANGEL_PB_BAYESIAN_BURN=600
-GOANGEL_PB_BAYESIAN_N_CHAINS=1
-GOANGEL_PB_BAYESIAN_THIN=1
-GOANGEL_PB_BAYESIAN_N_CORES=1
-ENVEOF
+{
+  printf 'BZZOIRO_TOKENS=%s
+' "${TOKENS}"
+  printf 'BZZOIRO_WORKERS_PER_KEY=%s
+' "${WORKERS_PER_KEY}"
+  printf 'BZZOIRO_MAX_WORKERS=%s
+' "${MAX_WORKERS}"
+  printf 'BZZOIRO_RATE_LIMIT_PER_MINUTE=%s
+' "${RATE_LIMIT}"
+  printf 'BZZOIRO_RATE_LIMIT_SAFETY_MARGIN=1
+'
+  printf 'BZZOIRO_HISTORICAL_SEASONS_LOOKBACK=%s
+' "${SEASONS}"
+  printf 'BZZOIRO_ENRICH_XG=%s
+' "${ENRICH}"
+  printf 'API_MAX_RETRIES=6
+'
+  printf 'API_RETRY_BACKOFF_SECONDS=0.4
+'
+  printf 'API_TIMEOUT_SECONDS=25
+'
+  printf 'GOANGEL_CACHE_DIR=./cache
+'
+  printf 'GOANGEL_LOG_LEVEL=INFO
+'
+  printf 'GOANGEL_GITHUB_PUSH=true
+'
+  printf 'GOANGEL_GITHUB_REPO=%s
+' "${GITHUB_REPOSITORY}"
+  printf 'GOANGEL_GITHUB_USER=%s
+' "${GITHUB_REPOSITORY_OWNER}"
+  printf 'GOANGEL_GITHUB_BRANCH=cache-auto
+'
+  printf 'GH_PAT=%s
+' "${GITHUB_TOKEN}"
+  printf 'GOANGEL_MAX_ATTEMPTS_PER_MODEL=%s
+' "${MAX_ATTEMPTS}"
+  printf 'GOANGEL_PB_BAYESIAN_N_SAMPLES=1200
+'
+  printf 'GOANGEL_PB_BAYESIAN_BURN=600
+'
+  printf 'GOANGEL_PB_BAYESIAN_N_CHAINS=1
+'
+  printf 'GOANGEL_PB_BAYESIAN_THIN=1
+'
+  printf 'GOANGEL_PB_BAYESIAN_N_CORES=1
+'
+  printf 'RCLONE_REMOTE=GOANGEL
+'
+  printf 'RCLONE_FOLDER=GOANGEL
+'
+} > .env
 
 mkdir -p cache
 
@@ -153,23 +172,22 @@ echo "☁️  Restauration cache depuis Google Drive + GitHub..."
 
 mkdir -p cache/stages/done cache/stages/attempts cache/stages/models
 
-# ─── 1. Drive en priorité (gros fichiers) ───
 if [ -f /tmp/rclone.conf ]; then
   mkdir -p cache/stages/done cache/stages/attempts cache/stages/models cache/stages/finalize
   echo "  📥 Drive : cache/..."
-  rclone --config /tmp/rclone.conf copy gdrive:GOANGEL/cache/ cache/ \
+  rclone --config /tmp/rclone.conf copy GOANGEL:GOANGEL/cache/ cache/ \
     --transfers 8 --checkers 16 \
     --exclude "*.tmp" --exclude "*.log" \
     --ignore-existing --ignore-errors \
     --stats-one-line --stats 10s 2>&1 | tail -3 || true
 
   echo "  📥 Drive : cache/stages/models/ (modèles critiques)"
-  rclone --config /tmp/rclone.conf copy gdrive:GOANGEL/cache/stages/models/ cache/stages/models/ \
+  rclone --config /tmp/rclone.conf copy GOANGEL:GOANGEL/cache/stages/models/ cache/stages/models/ --ignore-errors \
     --transfers 8 --checkers 16 --ignore-existing 2>&1 | tail -2 || true
 
   mkdir -p cache/stages/finalize cache/stages/models
   echo "  📥 Drive : cache/stages/finalize/"
-  rclone --config /tmp/rclone.conf copy gdrive:GOANGEL/cache/stages/finalize/ cache/stages/finalize/ \
+  rclone --config /tmp/rclone.conf copy GOANGEL:GOANGEL/cache/stages/finalize/ cache/stages/finalize/ --ignore-errors \
     --transfers 8 --checkers 16 --ignore-existing --ignore-errors 2>&1 | tail -2 || true
 
   echo "  🔍 Vérification :"
@@ -186,7 +204,6 @@ if [ -f /tmp/rclone.conf ]; then
   done
 fi
 
-# ─── 2. GitHub : restauration LFS (fichiers .pkl) + marqueurs ───
 if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
   rm -rf /tmp/ckpt_restore
   export GIT_LFS_SKIP_SMUDGE=0
@@ -208,12 +225,6 @@ if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
     cp -rf /tmp/ckpt_restore/cache/stages/models/* cache/stages/models/ 2>/dev/null || true
   fi
 fi
-
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  ENFORCEMENT DES POLITIQUES DRIVE / GITHUB
-# ═══════════════════════════════════════════════════════════════════════════
 
 if [ "${STAGE}" = "train_tabicl" ]; then
   echo "📥 Pré-téléchargement du checkpoint TabICLv2 (110 MB)..."
@@ -237,7 +248,6 @@ fi
 
 if [ -f "cache/stages/done/${STAGE}.done" ]; then
   echo "✅ Stage ${STAGE} déjà terminé (marqueur .done présent) — skip"
-  
   exit 0
 fi
 
@@ -267,9 +277,7 @@ echo "🏁 Stage ${STAGE} terminé RC=${RC} en ${DURATION}s"
 if [ "${RC}" = "0" ] || [ "${RC}" = "42" ] || [ "${RC}" = "124" ] || [ "${RC}" = "143" ]; then
 echo "☁️  Push cache → Google Drive + GitHub (marqueurs)..."
 
-# ─── 1. Push Drive (tout le cache) ───
 if [ -f /tmp/rclone.conf ]; then
-  # Garde-fou : ne pusher QUE si cache local est substantiel (> 10 MB)
   CACHE_MB=$(du -sm cache 2>/dev/null | awk '{print $1}' || echo 0)
   echo "  📊 Cache local : ${CACHE_MB} MB"
 
@@ -277,34 +285,29 @@ if [ -f /tmp/rclone.conf ]; then
     echo "  ⚠️  Cache trop petit (${CACHE_MB} MB < 10 MB) — skip Drive push (évite écrasement)"
   else
     echo "  📤 Drive : copy cache/ (non destructif)..."
-    rclone --config /tmp/rclone.conf copy cache/ gdrive:GOANGEL/cache/ \
+    rclone --config /tmp/rclone.conf copy cache/ GOANGEL:GOANGEL/cache/ \
       --transfers 8 --checkers 16 \
       --exclude "*.tmp" --exclude "*.log" \
       --exclude "checkpoints/**" \
       --stats-one-line --stats 10s 2>&1 | tail -3 || true
     echo "  ✅ Drive pushé"
 
-    # Push spécifique des modèles (sans --ignore-existing pour mise à jour)
     if [ -d cache/stages/models ] && [ "$(ls -A cache/stages/models 2>/dev/null)" ]; then
       echo "  📤 Drive : cache/stages/models/ (mise à jour)"
-      rclone --config /tmp/rclone.conf copy cache/stages/models/ gdrive:GOANGEL/cache/stages/models/ \
+      rclone --config /tmp/rclone.conf copy cache/stages/models/ GOANGEL:GOANGEL/cache/stages/models/ \
         --transfers 8 --checkers 16 2>&1 | tail -2 || true
     fi
   fi
 fi
 
-# ─── 2. Push GitHub cache-auto (marqueurs uniquement) ───
 echo "  📤 GitHub cache-auto (marqueurs)..."
 
-# Créer .gitignore pour cache-auto (exclure tous les .pkl sauf metadata)
 mkdir -p /tmp/goangel-gitignore
 cat > /tmp/goangel-gitignore/.gitignore <<'GIEOF'
-# Cache local (gros fichiers → Drive)
 cache/**/*.pkl
 cache/*.pkl
 !cache/stages/metadata.pkl
 
-# Logs & temp
 *.tmp
 *.log
 checkpoints/
@@ -319,19 +322,15 @@ git config user.email "actions@users.noreply.github.com"
 git config user.name "GOANGEL Auto"
 git checkout -B cache-auto
 
-# Copier .gitignore
 cp /tmp/goangel-gitignore/.gitignore .gitignore
 
-# Nettoyer les .pkl anciens du repo (migration LFS → Drive)
 git rm -r --cached cache/ 2>/dev/null || true
 
-# Recréer la structure avec SEULEMENT les petits fichiers
 mkdir -p cache/stages/done cache/stages/attempts
 cp -f "${GITHUB_WORKSPACE}/cache/stages/done/"*.done cache/stages/done/ 2>/dev/null || true
 cp -f "${GITHUB_WORKSPACE}/cache/stages/attempts/"*.json cache/stages/attempts/ 2>/dev/null || true
 cp -f "${GITHUB_WORKSPACE}/cache/stages/metadata.pkl" cache/stages/metadata.pkl 2>/dev/null || true
 
-# Supprimer LFS tracking (.gitattributes)
 rm -f .gitattributes
 
 git add -A
@@ -365,8 +364,6 @@ fi
 
 if [ "${RC}" = "0" ]; then
   echo "✅ Stage ${STAGE} terminé avec succès (RC=0)"
-  
-  echo "✅ Stage ${STAGE} terminé avec succès (RC=0)"
   exit 0
 fi
 
@@ -386,7 +383,6 @@ echo "  🛑 ARRÊT TOTAL DE LA CHAÎNE"
 echo "═══════════════════════════════════════════════════════════"
 exit 1
 
-# Limitation CPU
 export OMP_NUM_THREADS=2
 export MKL_NUM_THREADS=2
 export OPENBLAS_NUM_THREADS=2
