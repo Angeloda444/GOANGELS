@@ -1,3 +1,4 @@
+import lzma
 import os
 import re
 import sys
@@ -2172,31 +2173,64 @@ from datetime import datetime as _datetime
 
 def _stage_prepare() -> None:
     stage_print("🚀 STAGE PREPARE")
-    hist_path = Path(CACHE_DIR) / "historical.pkl"
-    feat_path = Path(CACHE_DIR) / "stages" / "features.pkl"
-    ckpt_mgr = None
 
-    df_past = None
+    hist_path = Path(CACHE_DIR) / "historical.pkl"
+    feat_path = _FEATURES_FILE
+
+    # ─── Si historical.pkl existe et est VALIDE, on saute le fetch ───
+    hist_valid = False
     if hist_path.exists():
         try:
-            df_cached = _atomic_read_pickle(hist_path)
-            if isinstance(df_cached, pd.DataFrame) and not df_cached.empty:
-                df_past = df_cached
-                stage_print(f"📦 historical.pkl chargé ({len(df_past)} matchs) — pas de fetch API")
-        except Exception as exc:
-            logger.warning("historical.pkl illisible : %s", exc)
+            import pickle as _pk
+            with open(hist_path, "rb") as _f:
+                _magic = _f.read(6)
+            if _magic[:6] == b"\xfd7zXZ\x00":
+                with open(hist_path, "rb") as _f:
+                    df_past = _pk.loads(lzma.decompress(_f.read()))
+            else:
+                with open(hist_path, "rb") as _f:
+                    df_past = _pk.load(_f)
+            if df_past is not None and len(df_past) > 1000:
+                hist_valid = True
+                stage_print(f"✅ historical.pkl VALIDE : {len(df_past)} matchs — pas de refetch")
+        except Exception as e:
+            stage_print(f"⚠️ historical.pkl corrompu : {e} — refetch complet nécessaire")
 
-    if df_past is None:
+    # ─── Si features.pkl existe et est VALIDE, on skip prepare ───
+    if feat_path.exists() and hist_valid:
+        try:
+            import pickle as _pk
+            with open(feat_path, "rb") as _f:
+                _magic = _f.read(6)
+            if _magic[:6] == b"\xfd7zXZ\x00":
+                with open(feat_path, "rb") as _f:
+                    payload = _pk.loads(lzma.decompress(_f.read()))
+            else:
+                with open(feat_path, "rb") as _f:
+                    payload = _pk.load(_f)
+            X = payload.get("X") if isinstance(payload, dict) else None
+            if X is not None and X.shape[0] > 1000:
+                stage_print(f"✅ features.pkl VALIDE : {X.shape} — PREPARE ignoré")
+                return
+            else:
+                stage_print(f"⚠️ features.pkl corrompu (X={X.shape if X is not None else None}) — régénération")
+        except Exception as e:
+            stage_print(f"⚠️ features.pkl corrompu : {e} — régénération")
+
+    # ─── Refetch complet si historical.pkl absent ───
+    if not hist_valid:
+        stage_print("📡 Fetch complet depuis Bzzoiro...")
         try:
             ckpt_mgr = CheckpointManager(
                 checkpoint_dir=Path(CHECKPOINT_DIR),
                 save_interval=30.0,
                 push_interval=300.0,
                 github_enabled=os.getenv("GOANGEL_GITHUB_PUSH", "false").lower() in ("1", "true", "yes", "on"),
-                github_repo=os.getenv("GOANGEL_GITHUB_REPO", "Defoghang/GOANGEL"),
-                github_user=os.getenv("GOANGEL_GITHUB_USER", "Defoghang"),
+                github_repo=os.getenv("GOANGEL_GITHUB_REPO", "Angeloda444/GOANGELS"),
+                github_user=os.getenv("GOANGEL_GITHUB_USER", "Angeloda444"),
                 github_token=os.getenv("GH_PAT", ""),
-                github_branch=os.getenv("GOANGEL_GITHUB_BRANCH", "cache-auto"))
+                github_branch=os.getenv("GOANGEL_GITHUB_BRANCH", "cache-auto"),
+            )
         except Exception as exc:
             logger.warning("CheckpointManager init échoué : %s", exc)
             ckpt_mgr = None
@@ -2204,41 +2238,18 @@ def _stage_prepare() -> None:
         if df_past is None or df_past.empty:
             raise RuntimeError("Historique vide après récupération")
         _atomic_write_pickle(hist_path, df_past)
+        if ckpt_mgr is not None:
+            try:
+                ckpt_mgr.finalize()
+            except Exception:
+                pass
 
-    features_ok = False
-    if feat_path.exists():
-        try:
-            feat = _atomic_read_pickle(feat_path)
-            if isinstance(feat, dict) and "X" in feat and "y" in feat:
-                n = len(feat.get("X", [])) if hasattr(feat.get("X"), "__len__") else 0
-                if n > 0:
-                    features_ok = True
-                    n_feat = feat["X"].shape[1] if hasattr(feat["X"], "shape") else "?"
-                    stage_print(f"📦 features.pkl chargé ({n} samples × {n_feat} features) — pas de régénération")
-                else:
-                    stage_print("⚠️  features.pkl présent mais vide → régénération")
-            else:
-                stage_print("⚠️  features.pkl structure invalide → régénération")
-        except Exception as exc:
-            logger.warning("features.pkl illisible : %s", exc)
-            stage_print(f"⚠️  features.pkl illisible ({exc}) → régénération")
-    else:
-        stage_print("⚠️  features.pkl ABSENT du Drive → régénération")
-
-    if not features_ok:
-        _stage_save_features(df_past)
-        try:
-            sz = feat_path.stat().st_size / (1024 * 1024)
-            stage_print(f"💾 features.pkl régénéré : {sz:.1f} MB")
-        except OSError:
-            pass
-
-    if ckpt_mgr is not None:
-        try:
-            ckpt_mgr.finalize()
-        except Exception:
-            pass
+    # ─── Régénération des features ───
+    stage_print("🔧 Régénération des features...")
+    _stage_save_features(df_past)
     stage_print(f"✅ STAGE PREPARE terminé : {len(df_past)} matchs")
+
+
 
 def _stage_run(stage_name: str) -> int:
     if stage_name == "next":
