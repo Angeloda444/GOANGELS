@@ -2172,24 +2172,55 @@ from datetime import datetime as _datetime
 
 def _stage_prepare() -> None:
     stage_print("🚀 STAGE PREPARE")
-    try:
-        ckpt_mgr = CheckpointManager(
-            checkpoint_dir=Path(CHECKPOINT_DIR),
-            save_interval=30.0,
-            push_interval=300.0,
-            github_enabled=os.getenv("GOANGEL_GITHUB_PUSH", "false").lower() in ("1", "true", "yes", "on"),
-            github_repo=os.getenv("GOANGEL_GITHUB_REPO", "Angeloda444/GOANGEL2"),
-            github_user=os.getenv("GOANGEL_GITHUB_USER", "Angeloda444"),
-            github_token=os.getenv("GH_PAT", ""),
-            github_branch=os.getenv("GOANGEL_GITHUB_BRANCH", "cache-auto"))
-    except Exception as exc:
-        logger.warning("CheckpointManager init échoué : %s", exc)
-        ckpt_mgr = None
-    df_past = _load_full_history(checkpoint_mgr=ckpt_mgr)
-    if df_past is None or df_past.empty:
-        raise RuntimeError("Historique vide après récupération")
-    _atomic_write_pickle(Path(CACHE_DIR) / "historical.pkl", df_past)
-    _stage_save_features(df_past)
+    hist_path = Path(CACHE_DIR) / "historical.pkl"
+    feat_path = Path(CACHE_DIR) / "stages" / "features.pkl"
+    ckpt_mgr = None
+
+    df_past = None
+    if hist_path.exists():
+        try:
+            df_cached = _atomic_read_pickle(hist_path)
+            if isinstance(df_cached, pd.DataFrame) and not df_cached.empty:
+                df_past = df_cached
+                stage_print(f"📦 historical.pkl chargé ({len(df_past)} matchs) — pas de fetch API")
+        except Exception as exc:
+            logger.warning("historical.pkl illisible : %s", exc)
+
+    if df_past is None:
+        try:
+            ckpt_mgr = CheckpointManager(
+                checkpoint_dir=Path(CHECKPOINT_DIR),
+                save_interval=30.0,
+                push_interval=300.0,
+                github_enabled=os.getenv("GOANGEL_GITHUB_PUSH", "false").lower() in ("1", "true", "yes", "on"),
+                github_repo=os.getenv("GOANGEL_GITHUB_REPO", "Defoghang/GOANGEL"),
+                github_user=os.getenv("GOANGEL_GITHUB_USER", "Defoghang"),
+                github_token=os.getenv("GH_PAT", ""),
+                github_branch=os.getenv("GOANGEL_GITHUB_BRANCH", "cache-auto"))
+        except Exception as exc:
+            logger.warning("CheckpointManager init échoué : %s", exc)
+            ckpt_mgr = None
+        df_past = _load_full_history(checkpoint_mgr=ckpt_mgr)
+        if df_past is None or df_past.empty:
+            raise RuntimeError("Historique vide après récupération")
+        _atomic_write_pickle(hist_path, df_past)
+
+    features_ok = False
+    if feat_path.exists():
+        try:
+            feat = _atomic_read_pickle(feat_path)
+            if isinstance(feat, dict) and "X" in feat and "y" in feat:
+                n = len(feat.get("X", [])) if hasattr(feat.get("X"), "__len__") else 0
+                if n > 0:
+                    features_ok = True
+                    n_feat = feat["X"].shape[1] if hasattr(feat["X"], "shape") else "?"
+                    stage_print(f"📦 features.pkl chargé ({n} samples × {n_feat} features) — pas de régénération")
+        except Exception as exc:
+            logger.warning("features.pkl illisible : %s", exc)
+
+    if not features_ok:
+        _stage_save_features(df_past)
+
     if ckpt_mgr is not None:
         try:
             ckpt_mgr.finalize()
