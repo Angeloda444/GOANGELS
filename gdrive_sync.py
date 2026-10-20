@@ -56,6 +56,25 @@ def _ensure_config() -> Path:
             RCLONE_CONF_PATH.write_bytes(data)
             RCLONE_CONF_PATH.chmod(0o600)
             logger.info("rclone config décodée : %s bytes", len(data))
+            try:
+                import configparser as _cp
+                _cfg = _cp.ConfigParser()
+                _cfg.read(RCLONE_CONF_PATH)
+                if not _cfg.has_section(RCLONE_REMOTE):
+                    _sections = _cfg.sections()
+                    if _sections:
+                        _first = _sections[0]
+                        _cfg.add_section(RCLONE_REMOTE)
+                        for _k, _v in _cfg.items(_first):
+                            _cfg.set(RCLONE_REMOTE, _k, _v)
+                        with open(RCLONE_CONF_PATH, "w") as _f:
+                            _cfg.write(_f)
+                        logger.warning(
+                            "Alias [%s] → [%s] ajouté au rclone.conf",
+                            RCLONE_REMOTE, _first,
+                        )
+            except Exception as _exc:
+                logger.warning("Alias rclone impossible : %s", _exc)
             return RCLONE_CONF_PATH
         except Exception as exc:
             raise GDriveSyncError(f"Décodage RCLONE_CONFIG échoué : {exc}") from exc

@@ -90,6 +90,23 @@ else
   if [ "$B64_RC" = "0" ] && [ -s /tmp/rclone.conf ]; then
     chmod 600 /tmp/rclone.conf
     echo "  ✅ rclone.conf créé : $(stat -c%s /tmp/rclone.conf) bytes"
+    if ! grep -q '^\[GOANGEL\]' /tmp/rclone.conf; then
+      FIRST_REMOTE=$(grep -oP '^\[\K[^\]]+' /tmp/rclone.conf 2>/dev/null | head -1)
+      if [ -n "$FIRST_REMOTE" ]; then
+        echo "  🔧 Alias [GOANGEL] → [$FIRST_REMOTE]"
+        python3 -c "
+import configparser
+c = configparser.ConfigParser()
+c.read('/tmp/rclone.conf')
+if not c.has_section('GOANGEL') and c.has_section('$FIRST_REMOTE'):
+    c.add_section('GOANGEL')
+    for k, v in c.items('$FIRST_REMOTE'):
+        c.set('GOANGEL', k, v)
+    with open('/tmp/rclone.conf', 'w') as f:
+        c.write(f)
+"
+      fi
+    fi
   else
     echo "  ⚠️  Décodage base64 échoué (RC=$B64_RC), fallback brut"
     echo "${RCLONE_CONFIG}" > /tmp/rclone.conf

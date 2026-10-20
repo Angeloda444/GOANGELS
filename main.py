@@ -2216,10 +2216,14 @@ def _stage_run(stage_name: str) -> int:
     # ─── Vérification préalable : environnement valide ? ───
     # Si les fichiers critiques sont des pointeurs LFS ou absents,
     # on ne consomme PAS d'attempt.
+    _skip_env_check = stage_name in ("prepare", "refresh")
     _env_ok = True
     _env_reasons = []
-    for _f in (Path(CACHE_DIR) / "historical.pkl",
-               Path(CACHE_DIR) / "stages" / "features.pkl"):
+    _env_files = () if _skip_env_check else (
+        Path(CACHE_DIR) / "historical.pkl",
+        Path(CACHE_DIR) / "stages" / "features.pkl",
+    )
+    for _f in _env_files:
         if not _f.exists():
             _env_ok = False
             _env_reasons.append(f"absent: {_f.name}")
